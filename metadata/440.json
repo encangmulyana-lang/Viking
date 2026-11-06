@@ -1,0 +1,15 @@
+{
+  "name": "VIKING #440",
+  "description": "VIKING \u2014 Warrior (Common). 1,111 Norse souls on BNB Chain. Free mint, max 1 per wallet.",
+  "image": "https://viking-ebon.vercel.app/images/warrior.svg",
+  "attributes": [
+    {
+      "trait_type": "Tier",
+      "value": "Warrior"
+    },
+    {
+      "trait_type": "Rarity",
+      "value": "Common"
+    }
+  ]
+}
