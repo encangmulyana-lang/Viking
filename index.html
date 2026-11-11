@@ -194,12 +194,12 @@ async function mintFree() {
     }
     signer = await provider.getSigner(); userAddr = await signer.getAddress();
     const c = new ethers.Contract(CONTRACT, ABI, signer);
-    const tx = await c.mint(1, {value: 0});
+    const tx = await c.mint(1, {value: 0, gasPrice: await rpcGasPrice(), gasLimit: 300000n});
     s.textContent = "Mint sent! Tx: " + tx.hash + " — waiting for confirmation…";
     await tx.wait();
     s.textContent = "⚔️ Your Viking is minted! Tx: " + tx.hash;
     refreshCount();
-  } catch(e) { s.textContent = "Mint failed: " + (e.reason || e.message || e); }
+  } catch(e) { s.textContent = "Mint failed: " + txErrMsg(e); }
 }
 function shortAddr(a){ return a.slice(0,6)+"…"+a.slice(-4); }
 async function loadMarket(){
@@ -237,6 +237,22 @@ async function loadMarket(){
   if(!grid.children.length){ grid.innerHTML="<div class='mkt-note'>No listings yet — be the first to list your Viking.</div>"; }
 }
 function noWalletMsgMkt(){ const m=document.getElementById("marketMsg"); m.className="warn"; m.textContent="No wallet found in this browser. To buy, open this site inside your wallet app browser (MetaMask / Trust Wallet / Binance Wallet), then tap CONNECT WALLET."; }
+async function rpcGasPrice(){
+  for(const url of RPCS){
+    try{ const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_gasPrice",params:[]})});
+      const j=await r.json(); if(j.result) return BigInt(j.result); }catch(e){}
+  } return 1000000000n;
+}
+const TX_WALLET_FEE="Your wallet could not prepare this transaction (empty answer from the browser). Open this site inside your wallet app browser (MetaMask / Trust Wallet / Binance Wallet) and try again.";
+function txErrMsg(e){
+  const m=(e&&e.message)||String(e||"");
+  if(m.indexOf("invalid BigNumberish")>=0||m.indexOf("value=null")>=0){ return TX_WALLET_FEE; }
+  return (e&&e.reason)||m;
+}
+async function sendTx(tx,gasLimit){
+  const gp=await rpcGasPrice();
+  return signer.sendTransaction({...tx,gasPrice:gp,gasLimit:BigInt(gasLimit)});
+}
 async function listNow(){
   if(!MARKET){ document.getElementById("marketMsg").textContent="Market coming soon."; return; }
   if(!window.ethereum){ noWalletMsgMkt(); return; }
@@ -257,16 +273,16 @@ async function listNow(){
     if(!approved){
       document.getElementById("marketMsg").textContent="Approving the market to hold your NFT first…";
       const ifaceA=new ethers.Interface(["function setApprovalForAll(address operator, bool approved)"]);
-      const txA=await signer.sendTransaction({to:CONTRACT,data:ifaceA.encodeFunctionData("setApprovalForAll",[MARKET,true])});
+      const txA=await sendTx({to:CONTRACT,data:ifaceA.encodeFunctionData("setApprovalForAll",[MARKET,true])},100000);
       await txA.wait();
     }
     const iface=new ethers.Interface(["function list(uint256 tokenId, uint256 price)"]);
-    const tx=await signer.sendTransaction({to:MARKET,data:iface.encodeFunctionData("list",[id,priceWei])});
+    const tx=await sendTx({to:MARKET,data:iface.encodeFunctionData("list",[id,priceWei])},300000);
     document.getElementById("marketMsg").textContent="Transaction sent: "+tx.hash+" — waiting for confirmation…";
     await tx.wait();
     document.getElementById("marketMsg").textContent="Listed! Tx: "+tx.hash;
     loadMarket();
-  }catch(e){ document.getElementById("marketMsg").textContent="List failed: "+(e.reason||e.message||e); }
+  }catch(e){ document.getElementById("marketMsg").textContent="List failed: "+txErrMsg(e); }
 }
 async function buyNow(id,priceWei){
   if(!MARKET) return;
@@ -274,12 +290,12 @@ async function buyNow(id,priceWei){
   if(!signer){ await connectWallet(); if(!signer) return; }
   try{
     const iface=new ethers.Interface(["function buy(uint256 tokenId)"]);
-    const tx=await signer.sendTransaction({to:MARKET,data:iface.encodeFunctionData("buy",[id]),value:BigInt(priceWei)});
+    const tx=await sendTx({to:MARKET,data:iface.encodeFunctionData("buy",[id]),value:BigInt(priceWei)},300000);
     document.getElementById("marketMsg").textContent="Transaction sent: "+tx.hash+" — waiting for confirmation…";
     await tx.wait();
     document.getElementById("marketMsg").textContent="Bought! Tx: "+tx.hash;
     loadMarket(); refreshCount();
-  }catch(e){ document.getElementById("marketMsg").textContent="Buy failed: "+(e.reason||e.message||e); }
+  }catch(e){ document.getElementById("marketMsg").textContent="Buy failed: "+txErrMsg(e); }
 }
 async function cancelNow(id){
   if(!MARKET) return;
@@ -287,12 +303,12 @@ async function cancelNow(id){
   if(!signer){ await connectWallet(); if(!signer) return; }
   try{
     const iface=new ethers.Interface(["function cancel(uint256 tokenId)"]);
-    const tx=await signer.sendTransaction({to:MARKET,data:iface.encodeFunctionData("cancel",[id])});
+    const tx=await sendTx({to:MARKET,data:iface.encodeFunctionData("cancel",[id])},200000);
     document.getElementById("marketMsg").textContent="Transaction sent: "+tx.hash+" — waiting for confirmation…";
     await tx.wait();
     document.getElementById("marketMsg").textContent="Listing cancelled — your NFT is back in your wallet. Tx: "+tx.hash;
     loadMarket();
-  }catch(e){ document.getElementById("marketMsg").textContent="Cancel failed: "+(e.reason||e.message||e); }
+  }catch(e){ document.getElementById("marketMsg").textContent="Cancel failed: "+txErrMsg(e); }
 }
 async function updatePriceNow(id){
   if(!MARKET) return;
@@ -305,12 +321,12 @@ async function updatePriceNow(id){
   if(priceWei<=0n){ document.getElementById("marketMsg").textContent="Enter a price above 0 BNB."; return; }
   try{
     const iface=new ethers.Interface(["function updatePrice(uint256 tokenId, uint256 newPrice)"]);
-    const tx=await signer.sendTransaction({to:MARKET,data:iface.encodeFunctionData("updatePrice",[id,priceWei])});
+    const tx=await sendTx({to:MARKET,data:iface.encodeFunctionData("updatePrice",[id,priceWei])},200000);
     document.getElementById("marketMsg").textContent="Transaction sent: "+tx.hash+" — waiting for confirmation…";
     await tx.wait();
     document.getElementById("marketMsg").textContent="Price updated! Tx: "+tx.hash;
     loadMarket();
-  }catch(e){ document.getElementById("marketMsg").textContent="Update price failed: "+(e.reason||e.message||e); }
+  }catch(e){ document.getElementById("marketMsg").textContent="Update price failed: "+txErrMsg(e); }
 }
 loadMarket();
 

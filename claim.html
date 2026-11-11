@@ -148,6 +148,10 @@ var CLAIM="0x85396a55A07CB3E2503dE383Afb7F921a729b3cB";
 var DEPLOY_BLOCK=132640000;
 var TRANSFER_TOPIC="0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 var RPCS=["https://bsc-dataseed.bnbchain.org","https://rpc-bsc.48.club"];
+async function rpcGasPrice(){ for(var i=0;i<RPCS.length;i++){ try{ var r=await fetch(RPCS[i],{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_gasPrice",params:[]})}); var j=await r.json(); if(j.result) return BigInt(j.result); }catch(e){} } return 1000000000n; }
+var TX_WALLET_FEE="Your wallet could not prepare this transaction (empty answer from the browser). Open this site inside your wallet app browser (MetaMask / Trust Wallet / Binance Wallet) and try again.";
+function txErrMsg(e){ var m=(e&&e.message)||String(e||""); if(m.indexOf("invalid BigNumberish")>=0||m.indexOf("value=null")>=0){ return TX_WALLET_FEE; } return (e&&e.reason)||m; }
+
 var readProvider=null, signer=null, userAddr=null, feePerNft=null, selected=new Set(), unclaimed=[];
 var NFT_ABI=["function ownerOf(uint256) view returns (address)"];
 var CLAIM_ABI=["function claim(uint256[]) payable","function claimed(uint256) view returns (bool)","function feePerNft() view returns (uint256)","function ALLOCATION() view returns (uint256)"];
@@ -243,7 +247,7 @@ async function doClaim(){
     var cl=new ethers.Contract(CLAIM,CLAIM_ABI,signer);
     var fee=feePerNft?feePerNft*BigInt(ids.length):ethers.parseEther((0.00016*ids.length).toFixed(5));
     msg("Sending claim transaction for "+ids.length+" Viking(s)...");
-    var tx=await cl.claim(ids,{value:fee});
+    var tx=await cl.claim(ids,{value:fee,gasPrice:await rpcGasPrice(),gasLimit:300000n});
     msg("Transaction sent: "+tx.hash+" — waiting for confirmation...");
     await tx.wait();
     msg("Claimed! "+(ids.length*10000).toLocaleString("en-US")+" VIKING should now be in your wallet. Tx: "+tx.hash);
@@ -251,7 +255,7 @@ async function doClaim(){
     var rp=await getReadProvider(); var tok=new ethers.Contract(TOKEN,TOKEN_ABI,rp);
     var bal=await tok.balanceOf(userAddr);
     document.getElementById("balLine").textContent="VIKING balance: "+ethers.formatEther(bal)+" VIKING";
-  }catch(e){ msg("Claim failed: "+(e&&e.reason?e.reason:(e&&e.message?e.message:e))); btn.disabled=false; }
+  }catch(e){ msg("Claim failed: "+txErrMsg(e)); btn.disabled=false; }
 }
 document.querySelectorAll(".reveal").forEach(function(el){ new IntersectionObserver(function(es,o){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add("on");o.disconnect();}})}).observe(el); });
 window.addEventListener("scroll",function(){ var nav=document.querySelector("nav"); if(nav) nav.classList.toggle("scrolled",window.scrollY>10); },{passive:true});
